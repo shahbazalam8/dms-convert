@@ -1,0 +1,267 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: FormKiQ Core - Console
+        
+Parameters:
+
+  AdminEmail:
+    Type: String
+    Description: Administrator Email
+    AllowedPattern: ".+"
+    
+  AppEnvironment:
+    Type: String
+    Description: The Document Stack Environment
+    AllowedPattern: ".+"
+          
+  ConsoleVersion:
+    Type: String
+    Description: Version of FormKiQ console to deploy
+    Default: v2.0.2
+    
+  FormKiQType:
+    Description: The type of FormKiQ installation
+    Default: "core"
+    Type: String
+    AllowedValues: ["core", "enterprise"]
+
+Resources:
+
+  Console:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: 
+        Fn::Sub: "formkiq-${FormKiQType}-${AppEnvironment}-console-${AWS::AccountId}"
+      AccessControl: Private
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration: 
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Application
+          Value: FormKiQ
+        - Key: AppEnvironment
+          Value: 
+            Fn::Sub: "${AppEnvironment}"
+        - Key: StackName
+          Value: 
+            Fn::Sub: "${AWS::StackName}"
+
+  ConsoleVersionParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: "Console Version"
+      Name: 
+        Fn::Sub: "/formkiq/${AppEnvironment}/console/version"
+      Type: String
+      Value: 
+        Ref: ConsoleVersion
+      Tags:
+        Application: 
+          Fn::Sub: "FormKiQ ${FormKiQType}"
+        AppEnvironment: 
+          Fn::Sub: "${AppEnvironment}"
+        StackName: 
+          Fn::Sub: "${AWS::StackName}"
+  
+  ConsoleParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: "Console S3 Bucket"
+      Name: 
+        Fn::Sub: "/formkiq/${AppEnvironment}/s3/Console"
+      Type: String
+      Value: 
+        Ref: Console
+      Tags:
+        Application: 
+          Fn::Sub: "FormKiQ ${FormKiQType}"
+        AppEnvironment: 
+          Fn::Sub: "${AppEnvironment}"
+        StackName: 
+          Fn::Sub: "${AWS::StackName}"
+        
+  ConsoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: "Console S3 Bucket Arn"
+      Name: 
+        Fn::Sub: "/formkiq/${AppEnvironment}/s3/ConsoleArn"
+      Type: String
+      Value:
+        Fn::GetAtt:
+        - Console
+        - Arn        
+      Tags:
+        Application: 
+          Fn::Sub: "FormKiQ ${FormKiQType}"
+        AppEnvironment: 
+          Fn::Sub: "${AppEnvironment}"
+        StackName: 
+          Fn::Sub: "${AWS::StackName}"
+
+  ConsoleDomainNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: "Console S3 Bucket Domain Name"
+      Name: 
+        Fn::Sub: "/formkiq/${AppEnvironment}/s3/ConsoleDomainName"
+      Type: String
+      Value: 
+        Fn::GetAtt:
+        - Console
+        - DomainName
+      Tags:
+        Application: 
+          Fn::Sub: "FormKiQ ${FormKiQType}"
+        AppEnvironment: 
+          Fn::Sub: "${AppEnvironment}"
+        StackName: 
+          Fn::Sub: "${AWS::StackName}"
+
+  ConsoleRegionalDomainNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: "Console S3 Bucket Regional Domain Name"
+      Name: 
+        Fn::Sub: "/formkiq/${AppEnvironment}/s3/ConsoleRegionalDomainName"
+      Type: String
+      Value: 
+        Fn::GetAtt:
+        - Console
+        - RegionalDomainName
+      Tags:
+        Application: 
+          Fn::Sub: "FormKiQ ${FormKiQType}"
+        AppEnvironment: 
+          Fn::Sub: "${AppEnvironment}"
+        StackName: 
+          Fn::Sub: "${AWS::StackName}"
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+        - DomainName: 
+            Fn::GetAtt:
+            - Console
+            - RegionalDomainName
+          Id: s3origin
+          OriginPath: 
+            Fn::Sub: "/${ConsoleVersion}"
+          S3OriginConfig:
+            OriginAccessIdentity: 
+              Fn::Sub: 'origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}'
+        DefaultCacheBehavior:
+          Compress: true
+          DefaultTTL: 600
+          MaxTTL: 600
+          MinTTL: 0
+          ForwardedValues:
+            QueryString: false
+          TargetOriginId: s3origin
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        Enabled: true
+        HttpVersion: http2
+        CustomErrorResponses:
+        - ErrorCode: '403'
+          ResponsePagePath: "/index.html"
+          ResponseCode: '200'
+        - ErrorCode: '404'
+          ResponsePagePath: "/index.html"
+          ResponseCode: '200'
+      Tags:
+        - Key: Application
+          Value: 
+            Fn::Sub: "FormKiQ ${FormKiQType}"
+        - Key: AppEnvironment
+          Value: 
+            Fn::Sub: "${AppEnvironment}"
+        - Key: StackName
+          Value: 
+            Fn::Sub: "${AWS::StackName}"
+
+  ConsoleUrlParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: "The URL for the FormKiQ Console"
+      Name: 
+        Fn::Sub: "/formkiq/${AppEnvironment}/console/Url"
+      Type: String
+      Value:
+        Fn::Join: 
+          - ""
+          - 
+            - 'https://'
+            - Fn::GetAtt:
+              - CloudFrontDistribution
+              - DomainName
+
+      Tags:
+        Application: 
+          Fn::Sub: "FormKiQ ${FormKiQType}"
+        AppEnvironment: 
+          Fn::Sub: "${AppEnvironment}"
+        StackName: 
+          Fn::Sub: "${AWS::StackName}"
+        
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: 
+          Fn::Sub: "FormKiQ Console CloudFront Identity"
+
+  ConsoleBucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties: 
+      Bucket: 
+        Ref: Console
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement: 
+        - 
+          Action: 
+            - "s3:GetObject"
+          Effect: "Allow"
+          Resource:
+            Fn::Join: 
+              - ""
+              - 
+                - Fn::GetAtt:
+                  - Console
+                  - Arn
+                - "/*"
+          Principal:
+            CanonicalUser: 
+              Fn::GetAtt:
+              - CloudFrontOriginAccessIdentity
+              - S3CanonicalUserId
+        
+Outputs:
+
+  ConsoleUrl:
+    Description: Console URL
+    Value:
+      Fn::Join: 
+          - ""
+          - 
+            - 'https://'
+            - Fn::GetAtt:
+              - CloudFrontDistribution
+              - DomainName
+          
+  ConsoleBucket:
+    Value:
+      Ref: Console
+       
+  ConsoleVersion:
+    Value:
+      Ref: ConsoleVersion

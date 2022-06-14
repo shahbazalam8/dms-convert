@@ -1,0 +1,196 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: FormKiQ Core - Console Install
+        
+Parameters:
+    
+  AppEnvironment:
+    Type: String
+    Description: The Document Stack Environment
+    AllowedPattern: ".+"
+          
+  ConsoleVersion:
+    Type: String
+    Description: Version of FormKiQ console to deploy
+    AllowedPattern: ".+"
+ 
+  ConsoleBucket:
+    Type: String
+    Description: Console S3 Bucket
+    AllowedPattern: ".+"
+
+  ApiUrl:
+    Type: String
+    Description: API URL
+    AllowedPattern: ".+"  
+  
+  WebsocketApiUrl:
+    Type: String
+    Description: WebSocket URL
+    AllowedPattern: ".+" 
+ 
+  AuthApiUrl:
+    Type: String
+    Description: Auth Api URL
+    AllowedPattern: ".+" 
+
+  Brand:
+    Type: String
+    Description: Console Installer Brand
+    Default: "formkiq"
+    
+  DistributionBucket:
+    Type: String
+    Description: FormKiQ Distribution BucketName
+    Default: "formkiq-distribution-console"
+
+  FormKiQType:
+    Description: The type of FormKiQ installation
+    Default: "core"
+    Type: String
+    AllowedValues: ["core", "enterprise"]
+
+  AllowAdminCreateUserOnly:
+    Description: When true only Cognito Admin can create users, false users can register themselves
+    AllowedPattern: ".+"
+    Type: String
+    
+Resources:
+
+  ConsoleInstallerParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: "Lambda for Console Installation"
+      Name: 
+        Fn::Sub: "/formkiq/${AppEnvironment}/lambda/ConsoleInstaller"
+      Type: String
+      Value: 
+        Ref: ConsoleInstaller
+      Tags:
+        Application: 
+          Fn::Sub: "FormKiQ ${FormKiQType}"
+        AppEnvironment: 
+          Fn::Sub: "${AppEnvironment}"
+        StackName: 
+          Fn::Sub: "${AWS::StackName}"
+
+  ConsoleInstaller:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: com.formkiq.stacks.console.ConsoleInstallHandler
+      Runtime: java11
+      Timeout: 300
+      MemorySize: 512
+      Role:
+        Fn::GetAtt:
+        - ConsoleInstallRole
+        - Arn
+      CodeUri: ./console-installer.zip
+      Tags:
+        Application: 
+          Fn::Sub: "FormKiQ ${FormKiQType}"
+        AppEnvironment: 
+          Fn::Sub: "${AppEnvironment}"
+        StackName: 
+          Fn::Sub: "${AWS::StackName}"
+      Environment:
+        Variables:
+          CONSOLE_VERSION: 
+            Fn::Sub: "${ConsoleVersion}"
+          DISTRIBUTION_BUCKET: 
+            Fn::Sub: "${DistributionBucket}"
+          REGION: 
+            Fn::Sub: "${AWS::Region}"
+          CONSOLE_BUCKET: 
+            Fn::Sub: "${ConsoleBucket}"
+          API_URL: 
+            Fn::Sub: "${ApiUrl}"
+          API_WEBSOCKET_URL: 
+            Fn::Sub: "${WebsocketApiUrl}"
+          API_AUTH_URL: 
+            Fn::Sub: "${AuthApiUrl}"
+          BRAND: 
+            Fn::Sub: "${Brand}"
+          ALLOW_ADMIN_CREATE_USER_ONLY: 
+            Fn::Sub: "${AllowAdminCreateUserOnly}"
+
+  ConsoleInstallRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Tags:
+        - Key: "Application"
+          Value: 
+            Fn::Sub: "FormKiQ ${FormKiQType}"        
+        - Key: "AppEnvironment"
+          Value: 
+            Fn::Sub: "${AppEnvironment}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      Policies:
+        -
+          PolicyName: 
+            Fn::Sub: "${AWS::StackName}-ConsoleInstallPolicy"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              Resource: "*"
+            - Effect: Allow
+              Action:
+              - ssm:GetParameter
+              Resource: 
+              - Fn::Sub: "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/formkiq/*"
+            - Effect: Allow
+              Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              Resource: 
+              - Fn::Join:
+                - ''
+                - - 'arn:aws:s3:::'
+                  - Ref: ConsoleBucket
+              - Fn::Join:
+                - ''
+                - - 'arn:aws:s3:::'
+                  - Ref: ConsoleBucket
+                  - '/*'              
+            - Effect: Allow
+              Action:
+              - s3:GetObject
+              Resource: 
+              - Fn::Join:
+                - ''
+                - - 'arn:aws:s3:::'
+                  - Ref: DistributionBucket
+                  - '/*'
+            - Effect: Allow
+              Action:
+              - 'kms:Encrypt'
+              - 'kms:Decrypt'
+              - 'kms:ReEncrypt*'
+              - 'kms:GenerateDataKey*'
+              - 'kms:DescribeKey'
+              Resource: '*'
+
+  ConsoleInstallerRef:
+    Type: Custom::ConsoleInstallerRef
+    Properties:
+      Nonce: 
+        Ref: ConsoleVersion
+      ServiceToken:
+        Fn::GetAtt:
+        - ConsoleInstaller
+        - Arn
