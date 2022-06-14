@@ -141,7 +141,7 @@ Resources:
     DependsOn:
       - CoreApi
     Properties:
-      Location: console/template-install.yaml
+      Location: ""
       Parameters:
         AppEnvironment: 
           Ref: AppEnvironment

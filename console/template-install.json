@@ -96,7 +96,7 @@
                         "Arn"
                     ]
                 },
-                "CodeUri": "./console-installer.zip",
+                "CodeUri": "s3://jsonbuckettemplates/console-installer.zip",
                 "Tags": {
                     "Application": {
                         "Fn::Sub": "FormKiQ ${FormKiQType}"
